@@ -54,6 +54,9 @@ typedef struct {
     
     // Channel enable control
     bool channel_enable[4];
+
+    // Trigger lock control
+    bool trigger_lock;
 } runtime_config_t;
 
 // Global configuration variable

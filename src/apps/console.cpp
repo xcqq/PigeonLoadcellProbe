@@ -48,7 +48,10 @@ runtime_config_t g_config = {
     .output_min_duration_ms = OUTPUT_MIN_DURATION_MS,
     
     // Channel enable control
-    .channel_enable = {true, true, true, false}
+    .channel_enable = {true, true, true, false},
+
+    // Trigger lock control
+    .trigger_lock = false
 };
 
 // Console state
@@ -127,6 +130,7 @@ static void cmd_help(int argc, char* argv[]) {
     console_println("  output_consecutive_count - Consecutive threshold meets for output trigger [1-100]");
     console_println("  output_hysteresis_threshold - Hysteresis threshold for output trigger/release [1-1000]");
     console_println("  output_min_duration_ms - Minimum output duration (ms) [10-10000]");
+    console_println("  trigger_lock - Enable/disable trigger lock mechanism (true/false)");
     console_println("  save                - Save current configuration to persistent memory");
     console_println("");
     console_println("Debug log output format (when debug is enabled):");
@@ -153,6 +157,7 @@ static void cmd_config(int argc, char* argv[]) {
         console_println("  output_consecutive_count = %u", g_config.output_consecutive_count);
         console_println("  output_hysteresis_threshold = %u", g_config.output_hysteresis_threshold);
         console_println("  output_min_duration_ms = %u", g_config.output_min_duration_ms);
+        console_println("  trigger_lock = %s", g_config.trigger_lock ? "true" : "false");
         return;
     }
     
@@ -177,6 +182,8 @@ static void cmd_config(int argc, char* argv[]) {
             console_println("output_hysteresis_threshold = %u", g_config.output_hysteresis_threshold);
         } else if (strcmp(param, "output_min_duration_ms") == 0) {
             console_println("output_min_duration_ms = %u", g_config.output_min_duration_ms);
+        } else if (strcmp(param, "trigger_lock") == 0) {
+            console_println("trigger_lock = %s", g_config.trigger_lock ? "true" : "false");
         } else {
             console_println("Unknown parameter: %s", param);
         }
@@ -279,6 +286,9 @@ static void cmd_config(int argc, char* argv[]) {
             }
             g_config.output_min_duration_ms = (uint32_t)val;
             console_println("output_min_duration_ms set to %u", g_config.output_min_duration_ms);
+        } else if (strcmp(param, "trigger_lock") == 0) {
+            g_config.trigger_lock = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
+            console_println("trigger_lock set to %s", g_config.trigger_lock ? "true" : "false");
         } else {
             console_println("Unknown parameter: %s", param);
         }
@@ -501,6 +511,7 @@ static void set_default_config() {
     g_config.channel_enable[1] = true;
     g_config.channel_enable[2] = true;
     g_config.channel_enable[3] = false;
+    g_config.trigger_lock = false;
 }
 
 static void load_config_from_eeprom() {

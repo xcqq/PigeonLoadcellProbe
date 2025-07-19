@@ -410,13 +410,15 @@ void loadcell_task_function()
                 output_active_start_time = current_time;
 
                 // Lock the trigger: record current baseline and threshold
-                is_trigger_locked = true;
-                triggered_threshold = g_config.trigger_threshold;
-                for (int i = 0; i < 4; i++) {
-                    triggered_baseline_weights[i] = baseline_weights[i];
+                if (g_config.trigger_lock) {
+                    is_trigger_locked = true;
+                    triggered_threshold = g_config.trigger_threshold;
+                    for (int i = 0; i < 4; i++) {
+                        triggered_baseline_weights[i] = baseline_weights[i];
+                    }
                 }
             }
-        } else if (is_trigger_locked) {
+        } else if (g_config.trigger_lock && is_trigger_locked) {
             // In trigger locked state, use locked baseline for comparison
             int weights_diff_sum_locked = 0;
             for (int i = 0; i < 4; i++) {
