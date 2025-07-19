@@ -25,6 +25,7 @@
 #define ADC_MAX_VALUE (1 << 24 - 1)
 #define ADC_REF_VOLT 1200000UL // uv
 #define ADC_PGA 64UL // just for reference
+#define ADC_SAMPLE_RATE 8000 // Options: 8000, 4000, 1000
 
 /* -----------------------------filter configure ----------------------------- */
 #define FILTER_WINDOW_SIZE 20

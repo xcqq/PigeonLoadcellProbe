@@ -7,6 +7,7 @@
 void setup()
 {
     Serial.begin(115200);
+    delay(1000);
     init_loadcell_task();
 }
 
@@ -17,7 +18,6 @@ void loop()
 
 // Core 1: Console processing
 void setup1(){
-    delay(1000); // Wait for core 0 to initialize
     init_console_task();
 }
 

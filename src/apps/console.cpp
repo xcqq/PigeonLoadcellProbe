@@ -28,6 +28,7 @@ runtime_config_t g_config = {
     
     // ADC configuration
     .adc_pga = ADC_PGA,
+    .adc_sample_rate = ADC_SAMPLE_RATE,
     
     // Filter configuration
     .filter_window_size = FILTER_WINDOW_SIZE,
@@ -129,6 +130,7 @@ static void cmd_help(int argc, char* argv[]) {
     console_println("  sensor_sensitivity   - Sensor sensitivity (uV/g) [1-10000]");
     console_println("  sensor_reverse       - Reverse sensor polarity (true/false)");
     console_println("  adc_pga             - ADC PGA gain [1,2,4,8,16,32,64,128]");
+    console_println("  adc_sample_rate     - ADC sample rate [1000, 4000, 8000]");
     console_println("  trigger_threshold   - Weight difference from baseline to trigger detection [1-10000]");
     console_println("  stability_threshold - Max-min difference in window for stable baseline update [1-1000]");
     console_println("  output_consecutive_count - Consecutive threshold meets for output trigger [1-100]");
@@ -157,6 +159,7 @@ static void cmd_config(int argc, char* argv[]) {
         console_println("  sensor_sensitivity   = %u", g_config.sensor_sensitivity);
         console_println("  sensor_reverse       = %s", g_config.sensor_reverse ? "true" : "false");
         console_println("  adc_pga             = %u", g_config.adc_pga);
+        console_println("  adc_sample_rate     = %u", g_config.adc_sample_rate);
         console_println("  trigger_threshold   = %d", g_config.trigger_threshold);
         console_println("  stability_threshold = %d", g_config.stability_threshold);
         console_println("  output_consecutive_count = %u", g_config.output_consecutive_count);
@@ -178,6 +181,8 @@ static void cmd_config(int argc, char* argv[]) {
             console_println("sensor_reverse = %s", g_config.sensor_reverse ? "true" : "false");
         } else if (strcmp(param, "adc_pga") == 0) {
             console_println("adc_pga = %u", g_config.adc_pga);
+        } else if (strcmp(param, "adc_sample_rate") == 0) {
+            console_println("adc_sample_rate = %u", g_config.adc_sample_rate);
         } else if (strcmp(param, "trigger_threshold") == 0) {
             console_println("trigger_threshold = %d", g_config.trigger_threshold);
         } else if (strcmp(param, "stability_threshold") == 0) {
@@ -249,6 +254,31 @@ static void cmd_config(int argc, char* argv[]) {
             g_config.adc_pga = (uint8_t)val;
             console_println("adc_pga set to %u", g_config.adc_pga);
             console_println("Note: Changes to adc_pga require system restart to take effect");
+        } else if (strcmp(param, "adc_sample_rate") == 0) {
+            const int valid_rates[] = {1000, 4000, 8000};
+            char* endptr;
+            long val = strtol(value, &endptr, 10);
+            if (*endptr != '\0') {
+                console_println("Invalid value: must be a number");
+                return;
+            }
+
+            bool valid = false;
+            for (int i = 0; i < 3; i++) {
+                if (val == valid_rates[i]) {
+                    valid = true;
+                    break;
+                }
+            }
+
+            if (!valid) {
+                console_println("Invalid sample rate: must be 1000, 4000, or 8000");
+                return;
+            }
+
+            g_config.adc_sample_rate = (uint16_t)val;
+            console_println("adc_sample_rate set to %u.", g_config.adc_sample_rate);
+            console_println("Note: Changes to adc_sample_rate require system restart to take effect");
         } else if (strcmp(param, "trigger_threshold") == 0) {
             char* endptr;
             long val = strtol(value, &endptr, 10);
@@ -514,6 +544,7 @@ static void set_default_config() {
     g_config.sensor_sensitivity = SENSOR_SENSITIVITY;
     g_config.sensor_reverse = false;
     g_config.adc_pga = ADC_PGA;
+    g_config.adc_sample_rate = ADC_SAMPLE_RATE;
     g_config.filter_window_size = FILTER_WINDOW_SIZE;
     g_config.slope_window_size = SLOPE_WINDOW_SIZE;
     g_config.window_size = WINDOW_SIZE;

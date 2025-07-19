@@ -38,6 +38,7 @@ typedef struct {
     
     // ADC configuration
     uint8_t adc_pga;
+    uint16_t adc_sample_rate;
     
     // Filter configuration
     int filter_window_size;

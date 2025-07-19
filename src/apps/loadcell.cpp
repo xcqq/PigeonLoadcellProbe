@@ -600,7 +600,18 @@ void init_loadcell_task()
         default: pga_setting = CHANNEL_PGA_64; break; // Default fallback
     }
     
-    adc.setOsr(OSR_1024);
+    // Set OSR based on the runtime sample rate configuration
+    if (g_config.adc_sample_rate == 8000) {
+        adc.setOsr(OSR_512);
+    } else if (g_config.adc_sample_rate == 4000) {
+        adc.setOsr(OSR_1024);
+    } else if (g_config.adc_sample_rate == 1000) {
+        adc.setOsr(OSR_4096);
+    } else {
+        // Default to 4000Hz if the configuration is invalid
+        adc.setOsr(OSR_1024); 
+    }
+
     for (int i = 0; i < 4; i++) {
         adc.setInputChannelSelection(i, INPUT_CHANNEL_MUX_AIN0P_AIN0N);
         adc.setChannelPGA(i, pga_setting);

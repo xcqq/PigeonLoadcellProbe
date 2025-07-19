@@ -2,7 +2,7 @@
 #include "Arduino.h"
 #include "SPI.h"
 
-#define settings SPISettings(4000000, MSBFIRST, SPI_MODE1)
+#define settings SPISettings(10000000, MSBFIRST, SPI_MODE1)
 
 ADS131M04::ADS131M04() {}
 
@@ -173,7 +173,7 @@ void ADS131M04::begin(uint8_t clk_pin, uint8_t sck_pin, uint8_t miso_pin, uint8_
     digitalWrite(ADS131M04_RST_PIN, HIGH);
     delay(100);
 
-    analogWriteFreq(8000000);
+    analogWriteFreq(16000000);
     analogWriteRange(100);
     analogWrite(ADS131M04_CLK_PIN, 50);
 }
