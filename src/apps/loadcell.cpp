@@ -8,6 +8,9 @@
 
 #define TRIGGER_OUT_PIN 5
 
+// Global variable to store current ADC sample rate
+float g_current_adc_sample_rate = 0.0f;
+
 ADS131M04 adc;
 NeoPixelConnect led(NEOPIXEL_PIN, 1);
 
@@ -326,13 +329,27 @@ void loadcell_task_function()
     int last_time = micros();
     int current_time = 0;
 
+    // Variables for sample rate calculation
+    uint32_t sample_count = 0;
+    uint32_t last_sample_rate_check_time = millis();
+
+
     while (1) {
         if (!adc.isDataReady()) {
             continue;
         }
         current_time = micros();
+        sample_count++;
         adc_ret = adc.readADC();
         any_channel_triggered = false; // Reset before processing new data
+
+        // Calculate sample rate every second
+        uint32_t current_millis = millis();
+        if (current_millis - last_sample_rate_check_time >= 1000) {
+            g_current_adc_sample_rate = (float)sample_count / ((current_millis - last_sample_rate_check_time) / 1000.0f);
+            sample_count = 0;
+            last_sample_rate_check_time = current_millis;
+        }
 
         // Process data for all four channels
         volts[0] = adc_to_volt(adc_ret.ch0);

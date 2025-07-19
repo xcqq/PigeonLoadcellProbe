@@ -4,6 +4,12 @@
 extern "C" {
 #endif
 
+#define APPS_HPP
+
+#include <stdint.h>
+
+extern float g_current_adc_sample_rate;
+
 // Loadcell task functions
 void init_loadcell_task();
 void loadcell_task_function();

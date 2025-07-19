@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "../config.h"
 #include <EEPROM.h>
+#include "apps.hpp"
 
 #define CONFIG_MAGIC 0xDEADBEEF
 #define CONFIG_VERSION 1  // Increment this when config structure changes
@@ -342,6 +343,7 @@ static void cmd_status(int argc, char* argv[]) {
     console_println("  Uptime: %u ms", millis());
     console_println("  Free heap: %u bytes", rp2040.getFreeHeap());
     console_println("  CPU frequency: %u MHz", rp2040.f_cpu() / 1000000);
+    console_println("  ADC sample rate: %.2f Hz", g_current_adc_sample_rate);
     console_println("  Debug: %s", g_debug_enabled ? "ON" : "OFF");
     console_println("  Channels: CH0=%s CH1=%s CH2=%s CH3=%s",
                     g_config.channel_enable[0] ? "ON" : "OFF",
