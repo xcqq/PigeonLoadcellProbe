@@ -41,8 +41,9 @@
 /* -----------------------------baseline configure ----------------------------- */
 #define BASELINE_UPDATE_THRESHOLD 100  // Update baseline when avg(max-min) of enabled channels < this value
 
-/* -----------------------------LED control configure ----------------------------- */
-#define LED_TRIGGER_COUNT_THRESHOLD 5  // Number of consecutive threshold exceeds required to turn LED red
-#define LED_HYSTERESIS_VALUE 50        // Hysteresis value for LED trigger/release (must be less than trigger threshold)
+/* -----------------------------output control configure ----------------------------- */
+#define OUTPUT_CONSECUTIVE_COUNT_THRESHOLD 5  // Number of consecutive threshold exceeds required for output trigger
+#define OUTPUT_HYSTERESIS_VALUE 50            // Hysteresis value for output trigger/release (must be less than trigger threshold)
+#define OUTPUT_MIN_DURATION_MS 100            // Minimum duration for the output to stay active
 
 #endif

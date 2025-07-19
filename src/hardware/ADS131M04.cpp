@@ -1,7 +1,6 @@
 #include "ADS131M04.h"
 #include "Arduino.h"
-#include "SoftwareSPI.h"
-
+#include "SPI.h"
 
 #define settings SPISettings(4000000, MSBFIRST, SPI_MODE1)
 
