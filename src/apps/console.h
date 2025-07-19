@@ -10,8 +10,14 @@ extern "C" {
 
 // Console buffer sizes
 #define CONSOLE_BUFFER_SIZE 128
-#define CONSOLE_MAX_ARGS 8
+#define CONSOLE_MAX_ARGS 10
 #define CONSOLE_MAX_ARG_LEN 32
+
+// Enum for trigger mode
+typedef enum {
+    TRIGGER_MODE_SUM, // Trigger on sum of weights
+    TRIGGER_MODE_ANY  // Trigger on any channel exceeding threshold
+} trigger_mode_t;
 
 // Console command structure
 typedef struct {
@@ -57,6 +63,10 @@ typedef struct {
 
     // Trigger lock control
     bool trigger_lock;
+
+    // Trigger mode
+    trigger_mode_t trigger_mode;
+
 } runtime_config_t;
 
 // Global configuration variable

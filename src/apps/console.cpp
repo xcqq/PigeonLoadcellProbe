@@ -51,7 +51,10 @@ runtime_config_t g_config = {
     .channel_enable = {true, true, true, false},
 
     // Trigger lock control
-    .trigger_lock = false
+    .trigger_lock = false,
+
+    // Trigger mode
+    .trigger_mode = TRIGGER_MODE_SUM
 };
 
 // Console state
@@ -131,6 +134,7 @@ static void cmd_help(int argc, char* argv[]) {
     console_println("  output_hysteresis_threshold - Hysteresis threshold for output trigger/release [1-1000]");
     console_println("  output_min_duration_ms - Minimum output duration (ms) [10-10000]");
     console_println("  trigger_lock - Enable/disable trigger lock mechanism (true/false)");
+    console_println("  trigger_mode - Trigger mode (0 for sum, 1 for any)");
     console_println("  save                - Save current configuration to persistent memory");
     console_println("");
     console_println("Debug log output format (when debug is enabled):");
@@ -158,6 +162,7 @@ static void cmd_config(int argc, char* argv[]) {
         console_println("  output_hysteresis_threshold = %u", g_config.output_hysteresis_threshold);
         console_println("  output_min_duration_ms = %u", g_config.output_min_duration_ms);
         console_println("  trigger_lock = %s", g_config.trigger_lock ? "true" : "false");
+        console_println("  trigger_mode = %d (%s)", g_config.trigger_mode, g_config.trigger_mode == TRIGGER_MODE_SUM ? "sum" : "any");
         return;
     }
     
@@ -184,6 +189,8 @@ static void cmd_config(int argc, char* argv[]) {
             console_println("output_min_duration_ms = %u", g_config.output_min_duration_ms);
         } else if (strcmp(param, "trigger_lock") == 0) {
             console_println("trigger_lock = %s", g_config.trigger_lock ? "true" : "false");
+        } else if (strcmp(param, "trigger_mode") == 0) {
+            console_println("trigger_mode = %d (%s)", g_config.trigger_mode, g_config.trigger_mode == TRIGGER_MODE_SUM ? "sum" : "any");
         } else {
             console_println("Unknown parameter: %s", param);
         }
@@ -289,6 +296,15 @@ static void cmd_config(int argc, char* argv[]) {
         } else if (strcmp(param, "trigger_lock") == 0) {
             g_config.trigger_lock = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
             console_println("trigger_lock set to %s", g_config.trigger_lock ? "true" : "false");
+        } else if (strcmp(param, "trigger_mode") == 0) {
+            char* endptr;
+            long val = strtol(value, &endptr, 10);
+            if (*endptr != '\0' || (val != 0 && val != 1)) {
+                console_println("Invalid value: must be 0 (sum) or 1 (any)");
+                return;
+            }
+            g_config.trigger_mode = (trigger_mode_t)val;
+            console_println("trigger_mode set to %d (%s)", g_config.trigger_mode, g_config.trigger_mode == TRIGGER_MODE_SUM ? "sum" : "any");
         } else {
             console_println("Unknown parameter: %s", param);
         }
@@ -512,6 +528,7 @@ static void set_default_config() {
     g_config.channel_enable[2] = true;
     g_config.channel_enable[3] = false;
     g_config.trigger_lock = false;
+    g_config.trigger_mode = TRIGGER_MODE_SUM;
 }
 
 static void load_config_from_eeprom() {

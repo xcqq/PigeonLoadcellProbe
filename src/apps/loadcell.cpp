@@ -321,6 +321,7 @@ void loadcell_task_function()
     int weights[4] = {0};
     int weights_diff[4] = {0};
     int weights_diff_sum = 0;
+    bool any_channel_triggered = false;
     int std_dev[4] = {0};
     int last_time = micros();
     int current_time = 0;
@@ -331,6 +332,7 @@ void loadcell_task_function()
         }
         current_time = micros();
         adc_ret = adc.readADC();
+        any_channel_triggered = false; // Reset before processing new data
 
         // Process data for all four channels
         volts[0] = adc_to_volt(adc_ret.ch0);
@@ -347,6 +349,9 @@ void loadcell_task_function()
             // Only add to sum if channel is enabled
             if (g_config.channel_enable[i]) {
                 weights_diff_sum += weights_diff[i];
+                if (abs(weights_diff[i]) > g_config.trigger_threshold) {
+                    any_channel_triggered = true;
+                }
             }
         }
 
@@ -397,79 +402,130 @@ void loadcell_task_function()
         if (!baseline_initialized) {
             // Keep blue LED until baseline is initialized
             led.neoPixelFill(0, 0, 128, true);
-        } else if (weights_diff_sum > g_config.trigger_threshold) {
-            // Threshold exceeded, increment counter
-            threshold_exceed_count++;
+        } else {
+            bool is_triggered = false;
+            if (g_config.trigger_mode == TRIGGER_MODE_SUM) {
+                is_triggered = (weights_diff_sum > g_config.trigger_threshold);
+            } else { // TRIGGER_MODE_ANY
+                is_triggered = any_channel_triggered;
+            }
 
-            // Only activate output if count threshold is reached
-            if (threshold_exceed_count >= g_config.output_consecutive_count && !output_is_active) {
-                // Transition to active and lock the trigger
-                led.neoPixelFill(128, 0, 0, true);
-                output_is_active = true;
-                digitalWrite(TRIGGER_OUT_PIN, HIGH);
-                output_active_start_time = current_time;
+            if (is_triggered) {
+                // Threshold exceeded, increment counter
+                threshold_exceed_count++;
 
-                // Lock the trigger: record current baseline and threshold
-                if (g_config.trigger_lock) {
-                    is_trigger_locked = true;
-                    triggered_threshold = g_config.trigger_threshold;
+                // Only activate output if count threshold is reached
+                if (threshold_exceed_count >= g_config.output_consecutive_count && !output_is_active) {
+                    // Transition to active and lock the trigger
+                    led.neoPixelFill(128, 0, 0, true);
+                    output_is_active = true;
+                    digitalWrite(TRIGGER_OUT_PIN, HIGH);
+                    output_active_start_time = current_time;
+
+                    // Lock the trigger: record current baseline and threshold
+                    if (g_config.trigger_lock) {
+                        is_trigger_locked = true;
+                        triggered_threshold = g_config.trigger_threshold;
+                        for (int i = 0; i < 4; i++) {
+                            triggered_baseline_weights[i] = baseline_weights[i];
+                        }
+                    }
+                }
+            } else if (g_config.trigger_lock && is_trigger_locked) {
+                // In trigger locked state, use locked baseline for comparison
+                int weights_diff_sum_locked = 0;
+                bool any_channel_triggered_locked = false;
+
+                for (int i = 0; i < 4; i++) {
+                    if (g_config.channel_enable[i]) {
+                        int weights_diff_locked = weights[i] - triggered_baseline_weights[i];
+                        weights_diff_sum_locked += weights_diff_locked;
+                        if (abs(weights_diff_locked) > (triggered_threshold - g_config.output_hysteresis_threshold)) {
+                            any_channel_triggered_locked = true;
+                        }
+                    }
+                }
+
+                bool is_below_hysteresis = false;
+                if (g_config.trigger_mode == TRIGGER_MODE_SUM) {
+                    is_below_hysteresis = (weights_diff_sum_locked < (triggered_threshold - g_config.output_hysteresis_threshold));
+                } else { // TRIGGER_MODE_ANY
+                    // For 'any' mode, if ANY enabled channel is still triggered (above hysteresis), we don't release the lock.
+                    // The lock is released only when ALL enabled channels are below the hysteresis threshold.
+                    
+                    // We need to check if ANY channel is still *above* the threshold.
+                    // The logic was checking if any channel was *below* which is not quite right for releasing the lock.
+                    // Let's re-evaluate. The lock should release when the trigger condition is no longer met.
+                    // The trigger condition *was* `any_channel_triggered_locked`.
+                    // So we should check if `any_channel_triggered_locked` is now false.
+                    
+                    // Re-checking the logic for 'any' mode with hysteresis
+                    any_channel_triggered_locked = false; // Reset before check
                     for (int i = 0; i < 4; i++) {
-                        triggered_baseline_weights[i] = baseline_weights[i];
+                        if (g_config.channel_enable[i]) {
+                            int weights_diff_locked = weights[i] - triggered_baseline_weights[i];
+                            // A channel is considered 'active' if its diff is still above the release threshold
+                            if (abs(weights_diff_locked) >= (triggered_threshold - g_config.output_hysteresis_threshold)) {
+                                 any_channel_triggered_locked = true;
+                                 break; // Found one still active, no need to check others
+                            }
+                        }
                     }
+                    is_below_hysteresis = !any_channel_triggered_locked;
                 }
-            }
-        } else if (g_config.trigger_lock && is_trigger_locked) {
-            // In trigger locked state, use locked baseline for comparison
-            int weights_diff_sum_locked = 0;
-            for (int i = 0; i < 4; i++) {
-                int weights_diff_locked = weights[i] - triggered_baseline_weights[i];
-                if (g_config.channel_enable[i]) {
-                    weights_diff_sum_locked += weights_diff_locked;
-                }
-            }
 
-            // Check if below locked threshold with hysteresis
-            if (weights_diff_sum_locked < (triggered_threshold - g_config.output_hysteresis_threshold)) {
-                // Below locked hysteresis threshold, reset counter and unlock trigger
-                threshold_exceed_count = 0;
-                is_trigger_locked = false;
+                // Check if below locked threshold with hysteresis
+                if (is_below_hysteresis) {
+                    // Below locked hysteresis threshold, reset counter and unlock trigger
+                    threshold_exceed_count = 0;
+                    is_trigger_locked = false;
 
-                // Should be green, but check minimum red duration
-                if (output_is_active) {
-                    // Check if minimum red duration has passed
-                    uint32_t red_duration_us = current_time - output_active_start_time;
-                    if (red_duration_us >= (g_config.output_min_duration_ms * 1000)) {
-                        // Minimum duration passed, can turn green
+                    // Should be green, but check minimum red duration
+                    if (output_is_active) {
+                        // Check if minimum red duration has passed
+                        uint32_t red_duration_us = current_time - output_active_start_time;
+                        if (red_duration_us >= (g_config.output_min_duration_ms * 1000)) {
+                            // Minimum duration passed, can turn green
+                            led.neoPixelFill(0, 128, 0, true);
+                            output_is_active = false;
+                            digitalWrite(TRIGGER_OUT_PIN, LOW);
+                        }
+                        // If minimum duration not passed, keep red LED (do nothing)
+                    } else {
+                        // Already green, keep green
                         led.neoPixelFill(0, 128, 0, true);
-                        output_is_active = false;
-                        digitalWrite(TRIGGER_OUT_PIN, LOW);
                     }
-                    // If minimum duration not passed, keep red LED (do nothing)
-                } else {
-                    // Already green, keep green
-                    led.neoPixelFill(0, 128, 0, true);
                 }
-            }
-            // If still above locked threshold, maintain current state
-        } else if (weights_diff_sum <
-                   (g_config.trigger_threshold - g_config.output_hysteresis_threshold)) {
-            // Below hysteresis threshold, reset counter
-            threshold_exceed_count = 0;
+                // If still above locked threshold, maintain current state
+            } else { // Not triggered and not in lock
+                 bool is_below_hysteresis = false;
+                if (g_config.trigger_mode == TRIGGER_MODE_SUM) {
+                    is_below_hysteresis = (weights_diff_sum < (g_config.trigger_threshold - g_config.output_hysteresis_threshold));
+                } else { // TRIGGER_MODE_ANY
+                    // In 'any' mode, we are not triggered, so we are by definition below the hysteresis threshold.
+                    is_below_hysteresis = !any_channel_triggered;
+                }
 
-            // Should be inactive, but check minimum output duration
-            if (output_is_active) {
-                // Check if the minimum output duration has been reached
-                uint32_t active_duration_us = current_time - output_active_start_time;
-                if (active_duration_us >= (g_config.output_min_duration_ms * 1000)) {
-                    // The minimum duration has been reached, can turn off the output
-                    led.neoPixelFill(0, 128, 0, true);
-                    output_is_active = false;
-                    digitalWrite(TRIGGER_OUT_PIN, LOW);
+                if(is_below_hysteresis) {
+                    // Below hysteresis threshold, reset counter
+                    threshold_exceed_count = 0;
+
+                    // Should be inactive, but check minimum output duration
+                    if (output_is_active) {
+                        // Check if the minimum output duration has been reached
+                        uint32_t active_duration_us = current_time - output_active_start_time;
+                        if (active_duration_us >= (g_config.output_min_duration_ms * 1000)) {
+                            // The minimum duration has been reached, can turn off the output
+                            led.neoPixelFill(0, 128, 0, true);
+                            output_is_active = false;
+                            digitalWrite(TRIGGER_OUT_PIN, LOW);
+                        }
+                        // If the minimum duration has not been reached, keep the output active (do nothing)
+                    } else {
+                        // Already inactive, keep green
+                        led.neoPixelFill(0, 128, 0, true);
+                    }
                 }
-                // If the minimum duration has not been reached, keep the output active (do nothing)
-            } else {
-                // Already inactive, keep green
-                led.neoPixelFill(0, 128, 0, true);
             }
         }
         char log_buf[128];
