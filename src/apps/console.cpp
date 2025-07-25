@@ -137,7 +137,7 @@ static void cmd_help(int argc, char* argv[]) {
     console_println("  output_hysteresis_threshold - Hysteresis threshold for output trigger/release [1-1000]");
     console_println("  output_min_duration_ms - Minimum output duration (ms) [10-10000]");
     console_println("  trigger_lock - Enable/disable trigger lock mechanism (true/false)");
-    console_println("  trigger_mode - Trigger mode (0 for sum, 1 for any)");
+    console_println("  trigger_mode - Trigger mode (0 for sum, 1 for any, 2 for sum_or_any)");
     console_println("  save                - Save current configuration to persistent memory");
     console_println("");
     console_println("Debug log output format (when debug is enabled):");
@@ -166,7 +166,14 @@ static void cmd_config(int argc, char* argv[]) {
         console_println("  output_hysteresis_threshold = %u", g_config.output_hysteresis_threshold);
         console_println("  output_min_duration_ms = %u", g_config.output_min_duration_ms);
         console_println("  trigger_lock = %s", g_config.trigger_lock ? "true" : "false");
-        console_println("  trigger_mode = %d (%s)", g_config.trigger_mode, g_config.trigger_mode == TRIGGER_MODE_SUM ? "sum" : "any");
+        const char *mode_str;
+        switch (g_config.trigger_mode) {
+        case TRIGGER_MODE_SUM: mode_str = "sum"; break;
+        case TRIGGER_MODE_ANY: mode_str = "any"; break;
+        case TRIGGER_MODE_SUM_OR_ANY: mode_str = "sum_or_any"; break;
+        default: mode_str = "unknown"; break;
+        }
+        console_println("  trigger_mode = %d (%s)", g_config.trigger_mode, mode_str);
         return;
     }
     
@@ -196,7 +203,14 @@ static void cmd_config(int argc, char* argv[]) {
         } else if (strcmp(param, "trigger_lock") == 0) {
             console_println("trigger_lock = %s", g_config.trigger_lock ? "true" : "false");
         } else if (strcmp(param, "trigger_mode") == 0) {
-            console_println("trigger_mode = %d (%s)", g_config.trigger_mode, g_config.trigger_mode == TRIGGER_MODE_SUM ? "sum" : "any");
+            const char *mode_str;
+            switch (g_config.trigger_mode) {
+            case TRIGGER_MODE_SUM: mode_str = "sum"; break;
+            case TRIGGER_MODE_ANY: mode_str = "any"; break;
+            case TRIGGER_MODE_SUM_OR_ANY: mode_str = "sum_or_any"; break;
+            default: mode_str = "unknown"; break;
+            }
+            console_println("trigger_mode = %d (%s)", g_config.trigger_mode, mode_str);
         } else {
             console_println("Unknown parameter: %s", param);
         }
@@ -328,14 +342,21 @@ static void cmd_config(int argc, char* argv[]) {
             g_config.trigger_lock = (strcmp(value, "true") == 0 || strcmp(value, "1") == 0);
             console_println("trigger_lock set to %s", g_config.trigger_lock ? "true" : "false");
         } else if (strcmp(param, "trigger_mode") == 0) {
-            char* endptr;
+            char *endptr;
             long val = strtol(value, &endptr, 10);
-            if (*endptr != '\0' || (val != 0 && val != 1)) {
-                console_println("Invalid value: must be 0 (sum) or 1 (any)");
+            if (*endptr != '\0' || (val < TRIGGER_MODE_SUM || val > TRIGGER_MODE_SUM_OR_ANY)) {
+                console_println("Invalid value: must be 0 (sum), 1 (any), or 2 (sum_or_any)");
                 return;
             }
             g_config.trigger_mode = (trigger_mode_t)val;
-            console_println("trigger_mode set to %d (%s)", g_config.trigger_mode, g_config.trigger_mode == TRIGGER_MODE_SUM ? "sum" : "any");
+            const char *mode_str;
+            switch (g_config.trigger_mode) {
+            case TRIGGER_MODE_SUM: mode_str = "sum"; break;
+            case TRIGGER_MODE_ANY: mode_str = "any"; break;
+            case TRIGGER_MODE_SUM_OR_ANY: mode_str = "sum_or_any"; break;
+            default: mode_str = "unknown"; break;
+            }
+            console_println("trigger_mode set to %d (%s)", g_config.trigger_mode, mode_str);
         } else {
             console_println("Unknown parameter: %s", param);
         }

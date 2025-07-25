@@ -423,8 +423,10 @@ void loadcell_task_function()
             bool is_triggered = false;
             if (g_config.trigger_mode == TRIGGER_MODE_SUM) {
                 is_triggered = (weights_diff_sum > g_config.trigger_threshold);
-            } else { // TRIGGER_MODE_ANY
+            } else if (g_config.trigger_mode == TRIGGER_MODE_ANY) { // TRIGGER_MODE_ANY
                 is_triggered = any_channel_triggered;
+            } else { // TRIGGER_MODE_SUM_OR_ANY
+                is_triggered = any_channel_triggered || (weights_diff_sum > g_config.trigger_threshold);
             }
 
             if (is_triggered) {
@@ -466,16 +468,7 @@ void loadcell_task_function()
                 bool is_below_hysteresis = false;
                 if (g_config.trigger_mode == TRIGGER_MODE_SUM) {
                     is_below_hysteresis = (weights_diff_sum_locked < (triggered_threshold - g_config.output_hysteresis_threshold));
-                } else { // TRIGGER_MODE_ANY
-                    // For 'any' mode, if ANY enabled channel is still triggered (above hysteresis), we don't release the lock.
-                    // The lock is released only when ALL enabled channels are below the hysteresis threshold.
-                    
-                    // We need to check if ANY channel is still *above* the threshold.
-                    // The logic was checking if any channel was *below* which is not quite right for releasing the lock.
-                    // Let's re-evaluate. The lock should release when the trigger condition is no longer met.
-                    // The trigger condition *was* `any_channel_triggered_locked`.
-                    // So we should check if `any_channel_triggered_locked` is now false.
-                    
+                } else { // TRIGGER_MODE_ANY or TRIGGER_MODE_SUM_OR_ANY
                     // Re-checking the logic for 'any' mode with hysteresis
                     any_channel_triggered_locked = false; // Reset before check
                     for (int i = 0; i < 4; i++) {
@@ -488,7 +481,11 @@ void loadcell_task_function()
                             }
                         }
                     }
-                    is_below_hysteresis = !any_channel_triggered_locked;
+                    if (g_config.trigger_mode == TRIGGER_MODE_ANY) {
+                        is_below_hysteresis = !any_channel_triggered_locked;
+                    } else { // TRIGGER_MODE_SUM_OR_ANY
+                        is_below_hysteresis = !any_channel_triggered_locked && (weights_diff_sum_locked < (triggered_threshold - g_config.output_hysteresis_threshold));
+                    }
                 }
 
                 // Check if below locked threshold with hysteresis
@@ -518,9 +515,11 @@ void loadcell_task_function()
                  bool is_below_hysteresis = false;
                 if (g_config.trigger_mode == TRIGGER_MODE_SUM) {
                     is_below_hysteresis = (weights_diff_sum < (g_config.trigger_threshold - g_config.output_hysteresis_threshold));
-                } else { // TRIGGER_MODE_ANY
+                } else if (g_config.trigger_mode == TRIGGER_MODE_ANY) { // TRIGGER_MODE_ANY
                     // In 'any' mode, we are not triggered, so we are by definition below the hysteresis threshold.
                     is_below_hysteresis = !any_channel_triggered;
+                } else { // TRIGGER_MODE_SUM_OR_ANY
+                    is_below_hysteresis = !any_channel_triggered && (weights_diff_sum < (g_config.trigger_threshold - g_config.output_hysteresis_threshold));
                 }
 
                 if(is_below_hysteresis) {

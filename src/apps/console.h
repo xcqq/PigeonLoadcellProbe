@@ -15,8 +15,9 @@ extern "C" {
 
 // Enum for trigger mode
 typedef enum {
-    TRIGGER_MODE_SUM, // Trigger on sum of weights
-    TRIGGER_MODE_ANY  // Trigger on any channel exceeding threshold
+    TRIGGER_MODE_SUM,       // Trigger on sum of weights
+    TRIGGER_MODE_ANY,       // Trigger on any channel
+    TRIGGER_MODE_SUM_OR_ANY // Trigger on sum or any channel
 } trigger_mode_t;
 
 // Console command structure
