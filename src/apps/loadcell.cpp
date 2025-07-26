@@ -61,6 +61,18 @@ typedef struct {
 
 window_data_t window_data[4];
 
+// Fixed-point Kalman filter structure for each channel
+// Using Q16.16 fixed-point format (16 bits integer, 16 bits fractional)
+typedef struct {
+    int32_t x; // State estimate (Q16.16 fixed-point)
+    int32_t p; // Estimate covariance (Q16.16 fixed-point)
+    int32_t q; // Process noise covariance (Q16.16 fixed-point)
+    int32_t r; // Measurement noise covariance (Q16.16 fixed-point)
+} kalman_filter_t;
+
+// Kalman filter array for 4 channels
+kalman_filter_t kalman_filters[4];
+
 // Monotonic deque operations
 void deque_init(monotonic_deque_t *deque, uint32_t capacity)
 {
@@ -163,6 +175,54 @@ void update_sliding_min(window_data_t *wd, int32_t new_value)
 }
 
 int compare(const void *a, const void *b) { return (*(int64_t *)a - *(int64_t *)b); }
+
+// Kalman filter initialization with fixed-point conversion
+void kalman_init(kalman_filter_t *kf, float process_noise, float measurement_noise, float initial_estimate) {
+    const int32_t Q16_16_ONE = 0x00010000; // 1.0 in Q16.16
+    kf->x = (int32_t)(initial_estimate * 65536.0f); // Convert to Q16.16
+    kf->p = Q16_16_ONE;
+    kf->q = (int32_t)(process_noise * 65536.0f);
+    kf->r = (int32_t)(measurement_noise * 65536.0f);
+}
+
+// Fixed-point Kalman filter update function
+int32_t kalman_update(kalman_filter_t *kf, int32_t measurement) {
+    // Constants for Q16.16 fixed-point math
+    const int32_t Q16_16_ONE = 0x00010000;
+    
+    // Prediction update: p = p + q
+    kf->p = kf->p + kf->q;
+    
+    // Calculate Kalman gain: k = p / (p + r)
+    // Using 64-bit intermediate to prevent overflow
+    int64_t denom = ((int64_t)kf->p + kf->r);
+    if (denom == 0) {
+        denom = Q16_16_ONE; // Prevent division by zero
+    }
+    
+    // Calculate k = (p << 16) / (p + r) to maintain Q16.16 precision
+    int32_t k = (int32_t)(((int64_t)kf->p << 16) / denom);
+    
+    // Ensure k is within reasonable bounds
+    if (k < 0) k = 0;
+    if (k > Q16_16_ONE) k = Q16_16_ONE;
+    
+    // Update state: x = x + k * (measurement - x)
+    // measurement and x are both in Q16.16 format
+    int64_t error = ((int64_t)measurement - kf->x);
+    int64_t correction = (error * k) >> 16; // Scale back to Q16.16
+    kf->x = kf->x + (int32_t)correction;
+    
+    // Update covariance: p = p * (1 - k)
+    // 1 - k is in Q16.16, so we use >> 16 to scale
+    int64_t p_update = ((int64_t)kf->p * (Q16_16_ONE - k)) >> 16;
+    kf->p = (int32_t)p_update;
+    
+    // Ensure p stays positive and reasonable
+    if (kf->p < Q16_16_ONE / 100) kf->p = Q16_16_ONE / 100; // Minimum covariance
+    
+    return kf->x;
+}
 
 void window_data_init(window_data_t *wd, uint32_t size)
 {
@@ -322,6 +382,7 @@ void loadcell_task_function()
     adcOutput adc_ret;
     int volts[4] = {0};
     int weights[4] = {0};
+    int32_t filtered_weights[4] = {0}; // Store Kalman filtered weights (Q16.16 fixed-point)
     int weights_diff[4] = {0};
     int weights_diff_sum = 0;
     bool any_channel_triggered = false;
@@ -360,9 +421,12 @@ void loadcell_task_function()
         weights_diff_sum = 0;
         for (int i = 0; i < 4; i++) {
             weights[i] = volt_to_weight(volts[i]);
-            window_data_add(&window_data[i], weights[i]);
-            weights_diff[i] =
-                weights[i] - baseline_weights[i]; // Compare with baseline instead of mean
+            // Apply Kalman filter to each channel
+            int32_t measurement_fixed = (int32_t)weights[i] * 65536; // Convert to Q16.16
+            int32_t filtered_fixed = kalman_update(&kalman_filters[i], measurement_fixed);
+            filtered_weights[i] = filtered_fixed; // Keep in Q16.16
+            window_data_add(&window_data[i], (filtered_weights[i] >> 16)); // Convert Q16.16 to int
+            weights_diff[i] = (filtered_weights[i] >> 16) - baseline_weights[i]; // Convert Q16.16 to int
             // Only add to sum if channel is enabled
             if (g_config.channel_enable[i]) {
                 weights_diff_sum += weights_diff[i];
@@ -371,6 +435,9 @@ void loadcell_task_function()
                 }
             }
         }
+
+        // Update auto-tuning with filtered measurements
+        kalman_autotune_update(filtered_weights);
 
         // Check if baseline should be updated
         int enabled_channel_count = 0;
@@ -407,7 +474,7 @@ void loadcell_task_function()
             if (all_windows_filled && all_channels_stable) {
                 for (int i = 0; i < 4; i++) {
                     if (g_config.channel_enable[i]) {
-                        baseline_weights[i] = window_data[i].mean;
+                        baseline_weights[i] = (filtered_weights[i] >> 16); // Use filtered value for baseline
                     }
                 }
                 // Mark baseline as initialized after first update
@@ -457,7 +524,7 @@ void loadcell_task_function()
 
                 for (int i = 0; i < 4; i++) {
                     if (g_config.channel_enable[i]) {
-                        int weights_diff_locked = weights[i] - triggered_baseline_weights[i];
+                        int weights_diff_locked = (filtered_weights[i] >> 16) - triggered_baseline_weights[i];
                         weights_diff_sum_locked += weights_diff_locked;
                         if (abs(weights_diff_locked) > (triggered_threshold - g_config.output_hysteresis_threshold)) {
                             any_channel_triggered_locked = true;
@@ -473,7 +540,7 @@ void loadcell_task_function()
                     any_channel_triggered_locked = false; // Reset before check
                     for (int i = 0; i < 4; i++) {
                         if (g_config.channel_enable[i]) {
-                            int weights_diff_locked = weights[i] - triggered_baseline_weights[i];
+                            int weights_diff_locked = (filtered_weights[i] >> 16) - triggered_baseline_weights[i];
                             // A channel is considered 'active' if its diff is still above the release threshold
                             if (abs(weights_diff_locked) >= (triggered_threshold - g_config.output_hysteresis_threshold)) {
                                  any_channel_triggered_locked = true;
@@ -550,7 +617,8 @@ void loadcell_task_function()
         ptr += sprintf(ptr, "loadcell:");
         for (int i = 0; i < 4; i++) {
             if (g_config.channel_enable[i]) {
-                ptr += sprintf(ptr, "%d,", weights[i]);
+                ptr += sprintf(ptr, "%d,", (filtered_weights[i] >> 16));
+                ptr += sprintf(ptr, "%d,", (int)weights[i]);
                 ptr += sprintf(ptr, "%d,", weights_diff[i]);
             }
         }
@@ -618,6 +686,8 @@ void init_loadcell_task()
         window_data_init(&window_data[i], g_config.window_size);
         // Initialize baseline weights to 0 (will be updated automatically during operation)
         baseline_weights[i] = 0;
+        // Initialize Kalman filter for each channel
+        kalman_init(&kalman_filters[i], 0.01f, 10.0f, 0.0f);
     }
 
 }
@@ -626,3 +696,11 @@ void init_loadcell_task()
 void init_console_task() { console_init(); }
 
 void console_task_function() { console_task(); }
+
+// Function to reinitialize Kalman filters with new parameters
+void reinitialize_kalman_filters(void) {
+    for (int i = 0; i < 4; i++) {
+        kalman_init(&kalman_filters[i], g_config.kalman_process_noise, 
+                   g_config.kalman_measurement_noise, 0.0f);
+    }
+}

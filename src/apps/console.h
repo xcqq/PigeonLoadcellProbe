@@ -69,6 +69,10 @@ typedef struct {
     // Trigger mode
     trigger_mode_t trigger_mode;
 
+    // Kalman filter configuration
+    float kalman_process_noise;     // Process noise covariance (Q)
+    float kalman_measurement_noise; // Measurement noise covariance (R)
+
 } runtime_config_t;
 
 // Global configuration variable
@@ -85,6 +89,12 @@ void console_print(const char* format, ...);
 void console_println(const char* format, ...);
 void debug_log(const char* format, ...);
 void debug_log_verbose(const char* format, ...);
+
+// Function to reinitialize Kalman filters with new parameters
+void reinitialize_kalman_filters(void);
+
+// Kalman filter auto-tuning function
+void kalman_autotune_update(int32_t measurements[4]);
 
 #ifdef __cplusplus
 }
